@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 
 
 class channel:
-    # Constructor for the channel class
+    """Constructor for the channel class"""
+
     def __init__(
         self,
         T_fluid_i=290,
@@ -15,23 +16,13 @@ class channel:
         fluid_density=1000,
         h_fluid=70,
         h_amb=10,
-        k=0.3,
+        p_k=0.3,
         intensity=1000,
         x_steps=100,
         flow_forward=True,
     ):
         # Constants
         self.sigma = 5.67e-8  # Stefan-Boltzmann constant (W/m^2·K^4)
-        self.c = 700  # Specific heat capacity (J/kg·K)
-        self.k = k  # Thermal conductivity (W/m·K)
-        self.alpha = 0.85  # Absorptivity
-        self.epsilon = 0.85  # Emissivity
-        self.G = intensity  # Solar irradiance (W/m^2)
-        self.h = h_amb  # Convective heat transfer coefficient (W/m^2·K)
-        self.mass_flow_rate = mass_flow_rate  # Mass flow rate (kg/s)
-        self.T_ambient = T_ambient  # Ambient temperature (K)
-        self.T_fluid_i = T_fluid_i  # Initial fluid temperature (K)
-        self.flow_forward = flow_forward  # True if flow is from left to right
 
         # Dimensions (in meters)
         self.panel_length, self.panel_width, self.panel_thickness = panel_dimensions
@@ -50,10 +41,28 @@ class channel:
             np.ones(x_steps) * T_fluid_i
         )  # Initial fluid temperature for each block
         self.T_panel_matrix = (
-            np.ones(x_steps) * T_fluid_i
-        )  # Initial panel temperature for each block
+            np.ones(x_steps) * T_ambient
+        )  # Initial panel temperature for each block (using ambient temperature as lower bound)
+
+        # Environment parameters
+        self.G = intensity  # Solar irradiance (W/m^2)
+        self.h = h_amb  # Convective heat transfer coefficient (W/m^2·K)
+        self.mass_flow_rate = mass_flow_rate  # Mass flow rate (kg/s)
+        self.T_ambient = T_ambient  # Ambient temperature (K)
+
+        # Panel Properties
+        self.p_specific_heat = 700  # Specific heat capacity (J/kg·K)
+        self.p_k = p_k  # Thermal conductivity (W/m·K)
+        self.p_alpha = 0.85  # Absorptivity
+        self.p_epsilon = 0.85  # Emissivity
+        self.p_density = 2300  # kg/m^3, assumed to be the density of aluminum
+        self.m = (
+            self.p_density * self.panel_thickness * self.A
+        )  # Mass of the panel per block (kg)
 
         # Fluid properties
+        self.T_fluid_i = T_fluid_i  # Initial fluid temperature (K)
+        self.flow_forward = flow_forward  # True if flow is from left to right
         self.h_fluid = h_fluid  # Heat transfer coefficient with cooling fluid (W/m^2·K)
         self.fluid_specific_heat = (
             fluid_specific_heat  # Specific heat capacity of water (J/kg·K)
@@ -65,38 +74,32 @@ class channel:
             fluid_density * self.block_volume
         )  # Mass of the cooling fluid (kg)
 
-        # Panel Properties
-        self.panel_density = 2300  # kg/m^3, assumed to be the density of aluminum
-        self.m = (
-            self.panel_density * self.panel_thickness * self.A
-        )  # Mass of the panel per block (kg)
-
         # Time parameters
         self.num_timesteps = 20
         self.time_duration = self.fluid_mass / mass_flow_rate  # Total time (seconds)
         self.time_step = self.time_duration / self.num_timesteps  # Time step (seconds)
 
-    # Calculate the net heat transfer rate (dT/dt) for the panel
     def panel_heat_transfer_rate(self, T, T_fluid_current):  # in K/s
-        absorbed = self.alpha * self.G * self.A  # Absorbed solar radiation (W)
+        """Calculate the net heat transfer rate (dT/dt) for the panel"""
+        absorbed = self.p_alpha * self.G * self.A  # Absorbed solar radiation (W)
         # assume no radiative loss
         radiative_loss = (
-            0  # self.epsilon * self.sigma * self.A * (self.T_ambient**4 - T**4)
+            0  # self.p_epsilon * self.sigma * self.A * (self.T_ambient**4 - T**4)
         )
         convective_gain = self.h * self.A * (self.T_ambient - T)
         fluid_cooling_loss = self.h_fluid * self.A * (T - T_fluid_current)
         net_heat_transfer = (
             absorbed + convective_gain - fluid_cooling_loss - radiative_loss
         )
-        return net_heat_transfer / (self.m * self.c)
+        return net_heat_transfer / (self.m * self.p_specific_heat)
 
-    # Calcluate the heat transfer rate to the fluid
     def fluid_heat_transfer_rate(self, T, T_fluid_current):  # in K/s
+        """Calcluate the heat transfer rate to the fluid"""
         heat_transfer_to_fluid = self.h_fluid * self.A * (T - T_fluid_current)
         return heat_transfer_to_fluid / (self.fluid_mass * self.fluid_specific_heat)
 
-    # Calculate the temperature of the panel and the cooling fluid of one block after self.num_timesteps of heat transfer from the environment and fluid
     def cool(self, T_initial, T_fluid):
+        """Calculate the temperature of the panel and the cooling fluid of one block after self.num_timesteps of heat transfer from the environment and fluid"""
         # Initial conditions
         T = T_initial  # Current temperature (K)
         T_fluid_current = T_fluid  # Current fluid temperature (K)
@@ -113,8 +116,8 @@ class channel:
             T_fluid_current += dT_fluid_dt * self.time_step
         return [T, T_fluid_current]
 
-    # Shift fluid temperature array and update the first element with the initial temperature
     def flow(self, flow_T=None):
+        """Shift fluid temperature array and update the first element with the initial temperature"""
         if self.flow_forward:
             self.T_fluid_matrix[1:] = self.T_fluid_matrix[:-1]
             self.T_fluid_matrix[0] = self.T_fluid_i
@@ -126,20 +129,21 @@ class channel:
             if flow_T is not None:
                 self.T_fluid_matrix[-1] = flow_T
 
-    # Cool and flow the fluid in whole channel for one iteration
     def cool_and_flow(self, flow_T=None):
+        """Cool and flow the fluid in whole channel for one iteration"""
         for i in range(len(self.T_fluid_matrix)):
             self.T_panel_matrix[i], self.T_fluid_matrix[i] = self.cool(
                 self.T_panel_matrix[i], self.T_fluid_matrix[i]
             )
         self.flow(flow_T)
 
-    # Cool and flow the fluid in whole channel for a number of iterations
     def cool_and_flow_iter(self, iter):
+        """Cool and flow the fluid in whole channel for multiple iterations"""
+        # If no cooling, just return intial temp profile (assumes panel same temp as fluid) but
+        # if cooling, let system reach steady state
         for i in range(iter):
             self.cool_and_flow()
 
-    #
     def diffuse(self):
         # Discretization
         alpha = 1.5e-6 * self.time_step / self.x_length**2
