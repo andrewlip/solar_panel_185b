@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 from channel_methods import channel
+from sympy import *
+
+T = symbols("T")
+from sympy import roots, solve_poly_system
 
 # Load Mojave dataset
 df = pd.read_csv("mojave_summer_clear_days.csv")
@@ -50,11 +54,10 @@ def run_experiment(Tamb, I, Tcoolant_in, mass_flowrate, cooling):
     # Run the experiment and let hit steady state
     if cooling:
         panel_experiment.cool_and_flow_iter(1000)
+        return panel_experiment.T_panel_matrix  # Return panel temperature profile
     else:  # No cooling
-        panel_experiment.cool_and_flow_iter(0)
-
-    # Return the temperature profile
-    return panel_experiment.T_panel_matrix
+        panel_experiment.no_flow_steady_state()
+        return panel_experiment.no_flow_panel_temp  # Return panel temperature profile
 
 
 def find_optimal_flowrate(Tamb, I, Tcoolant_in):
@@ -76,7 +79,7 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
 
         # for ease, use min temperature of panel
         efficiency_gain = assess_efficiency_increase(
-            min(T_panel_no_cooling), min(T_panel_with_cooling)
+            T_panel_no_cooling, np.average(T_panel_with_cooling)
         )  # Compute efficiency improvement
 
         print(f"Efficiency gain: {efficiency_gain}")
@@ -106,7 +109,7 @@ num_samples = len(df)  # Use all available environmental data
 data = []
 
 # Limit to the first few rows for testing
-num_samples_to_test = 100
+num_samples_to_test = 10
 
 for index, row in df.iterrows():
     # for debugging with first few rows

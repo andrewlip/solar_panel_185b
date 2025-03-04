@@ -1,5 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from sympy import *
+
+T = symbols("T")
+from sympy import roots, solve_poly_system
 
 
 class channel:
@@ -9,6 +13,7 @@ class channel:
         self,
         T_fluid_i=290,
         T_ambient=330,
+        T_outside=298,
         panel_dimensions=(1, 0.02, 0.01),
         channel_height=0.02,
         mass_flow_rate=0.001,
@@ -49,6 +54,9 @@ class channel:
         self.h = h_amb  # Convective heat transfer coefficient (W/m^2·K)
         self.mass_flow_rate = mass_flow_rate  # Mass flow rate (kg/s)
         self.T_ambient = T_ambient  # Ambient temperature (K)
+        self.T_outside = (
+            T_outside  # Temp on non-sun facing side of panel for SS no cooling
+        )
 
         # Panel Properties
         self.p_specific_heat = 700  # Specific heat capacity (J/kg·K)
@@ -143,6 +151,25 @@ class channel:
         # if cooling, let system reach steady state
         for i in range(iter):
             self.cool_and_flow()
+
+    def no_flow_steady_state(self):
+        """Calculate the steady state temperature of the panel with no flow"""
+        # h = 5
+        # solve resistance circuit type equation for T of panel
+        self.no_flow_panel_temp = solve(
+            self.p_alpha * self.G
+            + self.sigma * self.p_epsilon * ((self.T_ambient) ** 4 - T**4)
+            + self.h * (self.T_ambient - T)
+            - self.sigma * self.p_epsilon * (T**4 - (self.T_outside) ** 4)
+            - self.h * (T - self.T_outside),
+            T,
+        )
+
+        # take positive real value from solution
+        self.no_flow_panel_temp = [
+            i.evalf() for i in self.no_flow_panel_temp if i.is_real and i > 0
+        ][0]
+        return self.no_flow_panel_temp
 
     def diffuse(self):
         # Discretization
