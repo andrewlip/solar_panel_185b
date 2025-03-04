@@ -6,22 +6,23 @@ from channel_methods import channel
 df = pd.read_csv("mojave_summer_clear_days.csv")
 
 # Define constants & parameter ranges
-Tcoolant_range = (20, 30)  # Coolant inlet temperature (°C)
+Tcoolant_dist = (25, 2.5)  # Coolant inlet temperature (°C), normal distribution
 # will need to redefine methods for volumetric flowrate if not using water
 mass_flowrate_range = np.linspace(
     0.0001, 0.01, 50
 )  # Test flow rates from 0.0001 kg/s to 0.01 kg/s (assuming water)
 PV_EFFICIENCY_REF = 0.20  # 20% efficiency (upper bound) at STC conditions
 TEMP_COEFF = -0.0045  # -0.45% per °C efficiency loss
-T_REF = 25  # Reference temperature (°C)
+T_REF = 298.15  # Reference temperature in Kelvin
 
 
 def assess_efficiency_increase(T_panel_no_cooling, T_panel_with_cooling):
     """Computes efficiency improvement due to cooling."""
-    eta_no_cooling = PV_EFFICIENCY_REF * (1 + TEMP_COEFF * (T_REF - T_panel_no_cooling))
+    eta_no_cooling = PV_EFFICIENCY_REF * (1 - TEMP_COEFF * (T_REF - T_panel_no_cooling))
     eta_with_cooling = PV_EFFICIENCY_REF * (
-        1 + TEMP_COEFF * (T_REF - T_panel_with_cooling)
+        1 - TEMP_COEFF * (T_REF - T_panel_with_cooling)
     )
+
     efficiency_gain = eta_with_cooling - eta_no_cooling
     return efficiency_gain
 
@@ -73,22 +74,26 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
             Tamb, I, Tcoolant_in, mass_flowrate, cooling=True
         )
 
-        # for ease, use mean temperature of panel
+        # for ease, use min temperature of panel
         efficiency_gain = assess_efficiency_increase(
-            np.mean(T_panel_no_cooling), np.mean(T_panel_with_cooling)
+            min(T_panel_no_cooling), min(T_panel_with_cooling)
         )  # Compute efficiency improvement
 
         print(f"Efficiency gain: {efficiency_gain}")
 
-        # if efficiency increase sufficient or leads to decrease, return flowrate
-        if (
-            (efficiency_gain >= efficiency_threshold)
-            | (efficiency_gain < prev_efficiency_gain)
-            | (efficiency_gain < 0)
-        ):
+        # If efficiency decreases, fluid is warming panel, return zero flow
+        if efficiency_gain < 0:
+            best_flowrate = 0
+            break
+        # If efficiency gain is less than previous, return previous best flowrate
+        elif efficiency_gain < prev_efficiency_gain:
+            break
+        # if efficiency increase sufficient, return flowrate
+        elif efficiency_gain >= efficiency_threshold:
             best_flowrate = mass_flowrate
-            break  # Stop at the first flowrate that meets the requirement
+            break
 
+        best_flowrate = mass_flowrate
         prev_efficiency_gain = efficiency_gain
 
     return best_flowrate
@@ -101,20 +106,21 @@ num_samples = len(df)  # Use all available environmental data
 data = []
 
 # Limit to the first few rows for testing
-num_samples_to_test = 5
+num_samples_to_test = 100
 
 for index, row in df.iterrows():
+    # for debugging with first few rows
     if index >= num_samples_to_test:
         break
 
     Tamb = row["air_temperature"]
     I = row["ghi"]
-    Tcoolant_in = np.random.uniform(
-        *Tcoolant_range
-    )  # Randomly sample coolant inlet temp
+    Tcoolant_in = np.random.normal(
+        *Tcoolant_dist
+    )  # Randomly sample coolant inlet temp from normal distribution
 
     # Log progress
-    print(f"Processing sample {index + 1}/{num_samples_to_test}")
+    print(f"------- Processing sample {index + 1}/{num_samples_to_test} -------")
 
     mass_flowrate_optimal = find_optimal_flowrate(Tamb, I, Tcoolant_in)
 
@@ -126,4 +132,6 @@ final_df = pd.DataFrame(
 )
 final_df.to_csv("solar_cooling_training_data_test.csv", index=False)
 
-print("Test dataset generation complete. Saved as solar_cooling_training_data_test.csv")
+print(
+    "------- Test dataset generation complete. Saved as solar_cooling_training_data_test.csv -------"
+)

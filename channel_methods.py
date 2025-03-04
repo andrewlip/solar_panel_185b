@@ -139,7 +139,7 @@ class channel:
 
     def cool_and_flow_iter(self, iter):
         """Cool and flow the fluid in whole channel for multiple iterations"""
-        # If no cooling, just return intial temp profile (assumes panel same temp as fluid) but
+        # If no cooling, just return intial temp profile (assumes panel same temp as t_amb) but
         # if cooling, let system reach steady state
         for i in range(iter):
             self.cool_and_flow()
