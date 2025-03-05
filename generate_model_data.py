@@ -2,9 +2,11 @@ import pandas as pd
 import numpy as np
 from channel_methods import channel
 from sympy import *
+import time
 
 T = symbols("T")
 from sympy import roots, solve_poly_system
+import multiprocessing
 
 # Load Mojave dataset
 df = pd.read_csv("mojave_summer_clear_days.csv")
@@ -34,9 +36,9 @@ def assess_efficiency_increase(T_panel_no_cooling, T_panel_with_cooling):
 def run_experiment(Tamb, I, Tcoolant_in, mass_flowrate, cooling):
     """Runs a single cooling experiment and returns the temperature profile."""
 
-    print(
-        f"Running experiment with Tamb={Tamb}°C, I={I} W/m^2, Tcoolant_in={Tcoolant_in}°C, mass_flowrate={mass_flowrate} kg/s, cooling={'On' if cooling else 'Off'}"
-    )
+    # print(
+    #     f"Running experiment with Tamb={Tamb}°C, I={I} W/m^2, Tcoolant_in={Tcoolant_in}°C, mass_flowrate={mass_flowrate} kg/s, cooling={'On' if cooling else 'Off'}"
+    # )
 
     # Redefine experimental variables in appropriate units
     Tamb = Tamb + 273.15  # Convert to Kelvin
@@ -67,7 +69,7 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
     efficiency_threshold = 0.05  # Require at least 5% efficiency gain
 
     for mass_flowrate in mass_flowrate_range:
-        print(f"Testing mass flowrate: {mass_flowrate} kg/s")
+        # print(f"Testing mass_flowrate: {mass_flowrate} kg/s")
 
         # simulate no cooling and cooling
         T_panel_no_cooling = run_experiment(
@@ -82,7 +84,7 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
             T_panel_no_cooling, np.average(T_panel_with_cooling)
         )  # Compute efficiency improvement
 
-        print(f"Efficiency gain: {efficiency_gain}")
+        # print(f"Efficiency gain: {efficiency_gain}")
 
         # If efficiency decreases, fluid is warming panel, return zero flow
         if efficiency_gain < 0:
@@ -99,7 +101,7 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
         best_flowrate = mass_flowrate
         prev_efficiency_gain = efficiency_gain
 
-    return best_flowrate
+    return Tamb, I, Tcoolant_in, best_flowrate
 
 
 # Generate dataset
@@ -111,11 +113,8 @@ data = []
 # Limit to the first few rows for testing
 num_samples_to_test = 10
 
-for index, row in df.iterrows():
-    # for debugging with first few rows
-    if index >= num_samples_to_test:
-        break
 
+def process_sample(index, row):
     Tamb = row["air_temperature"]
     I = row["ghi"]
     Tcoolant_in = np.random.normal(
@@ -123,18 +122,42 @@ for index, row in df.iterrows():
     )  # Randomly sample coolant inlet temp from normal distribution
 
     # Log progress
-    print(f"------- Processing sample {index + 1}/{num_samples_to_test} -------")
+    print(
+        f"------- Processing sample {index + 1}/{num_samples_to_test} -------\nTamb: {Tamb}°C, I: {I} W/m^2, Tcoolant_in: {Tcoolant_in}°C"
+    )
+    start_time = time.time()
 
-    mass_flowrate_optimal = find_optimal_flowrate(Tamb, I, Tcoolant_in)
+    result = find_optimal_flowrate(Tamb, I, Tcoolant_in)
 
-    data.append([Tamb, I, Tcoolant_in, mass_flowrate_optimal])
+    # Indicate sample processing completion
+    end_time = time.time()
+    print(
+        f"*  *  *  Finished processing sample {index + 1}/{num_samples_to_test} in {end_time - start_time:.2f} seconds *  *  *"
+    )
 
-# Convert to DataFrame and save to CSV
-final_df = pd.DataFrame(
-    data, columns=["Tamb", "I", "Tcoolant_in", "mass_flowrate_optimal"]
-)
-final_df.to_csv("solar_cooling_training_data_test.csv", index=False)
+    return result
 
-print(
-    "------- Test dataset generation complete. Saved as solar_cooling_training_data_test.csv -------"
-)
+
+if __name__ == "__main__":
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        results = pool.starmap(
+            process_sample,
+            [
+                (index, row)
+                for index, row in df.iterrows()
+                if index < num_samples_to_test
+            ],
+        )
+
+    # Collect results
+    data.extend(results)
+
+    # Convert to DataFrame and save to CSV
+    final_df = pd.DataFrame(
+        data, columns=["Tamb", "I", "Tcoolant_in", "mass_flowrate_optimal"]
+    )
+    final_df.to_csv("solar_cooling_training_data_test.csv", index=False)
+
+    print(
+        "------- Test dataset generation complete. Saved as solar_cooling_training_data_test.csv -------"
+    )
