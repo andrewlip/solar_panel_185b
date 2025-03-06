@@ -145,12 +145,31 @@ class channel:
             )
         self.flow(flow_T)
 
-    def cool_and_flow_iter(self, iter):
-        """Cool and flow the fluid in whole channel for multiple iterations"""
+    def cool_and_flow_iter(self, max_iter=1000, tol=0.1):
+        """Cool and flow the fluid in whole channel until steady state or max iterations reached
+        
+        Args:
+            max_iter (int): Maximum number of iterations to run
+            tol (float): Temperature difference tolerance to determine steady state
+            
+        Returns:
+            int: Number of iterations performed to reach steady state
+        """
         # If no cooling, just return intial temp profile (assumes panel same temp as t_amb) but
         # if cooling, let system reach steady state
-        for i in range(iter):
+        prev_temps = self.T_panel_matrix.copy()
+        
+        for i in range(max_iter):
             self.cool_and_flow()
+            
+            # Check if steady state reached by comparing temperature changes
+            temp_diff = np.abs(self.T_panel_matrix - prev_temps).max()
+            if temp_diff < tol:
+                return i + 1  # Return number of iterations needed
+                
+            prev_temps = self.T_panel_matrix.copy()
+            
+        return max_iter  # Return max_iter if steady state not reached
 
     def no_flow_steady_state(self):
         """Calculate the steady state temperature of the panel with no flow"""

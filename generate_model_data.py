@@ -55,7 +55,7 @@ def run_experiment(Tamb, I, Tcoolant_in, mass_flowrate, cooling):
 
     # Run the experiment and let hit steady state
     if cooling:
-        panel_experiment.cool_and_flow_iter(1000)
+        panel_experiment.cool_and_flow_iter()
         return panel_experiment.T_panel_matrix  # Return panel temperature profile
     else:  # No cooling
         panel_experiment.no_flow_steady_state()
@@ -111,7 +111,7 @@ num_samples = len(df)  # Use all available environmental data
 data = []
 
 # Limit to the first few rows for testing
-num_samples_to_test = 10
+num_samples_to_test = num_samples
 
 
 def process_sample(index, row):
