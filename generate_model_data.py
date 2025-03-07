@@ -1,12 +1,6 @@
 import pandas as pd
 import numpy as np
 from channel_methods import channel
-from sympy import *
-import time
-
-T = symbols("T")
-from sympy import roots, solve_poly_system
-import multiprocessing
 
 # Load Mojave dataset
 df = pd.read_csv("mojave_summer_clear_days.csv")
@@ -24,6 +18,8 @@ T_REF = 298.15  # Reference temperature in Kelvin
 
 def assess_efficiency_increase(T_panel_no_cooling, T_panel_with_cooling):
     """Computes efficiency improvement due to cooling."""
+
+    print(f"T_panel_no_cooling: {T_panel_no_cooling}, T_panel_with_cooling: {T_panel_with_cooling}")
     eta_no_cooling = PV_EFFICIENCY_REF * (1 - TEMP_COEFF * (T_REF - T_panel_no_cooling))
     eta_with_cooling = PV_EFFICIENCY_REF * (
         1 - TEMP_COEFF * (T_REF - T_panel_with_cooling)
@@ -36,9 +32,9 @@ def assess_efficiency_increase(T_panel_no_cooling, T_panel_with_cooling):
 def run_experiment(Tamb, I, Tcoolant_in, mass_flowrate, cooling):
     """Runs a single cooling experiment and returns the temperature profile."""
 
-    # print(
-    #     f"Running experiment with Tamb={Tamb}°C, I={I} W/m^2, Tcoolant_in={Tcoolant_in}°C, mass_flowrate={mass_flowrate} kg/s, cooling={'On' if cooling else 'Off'}"
-    # )
+    print(
+        f"Running experiment with Tamb={Tamb}°C, I={I} W/m^2, Tcoolant_in={Tcoolant_in}°C, mass_flowrate={mass_flowrate} kg/s, cooling={'On' if cooling else 'Off'}"
+    )
 
     # Redefine experimental variables in appropriate units
     Tamb = Tamb + 273.15  # Convert to Kelvin
@@ -55,21 +51,23 @@ def run_experiment(Tamb, I, Tcoolant_in, mass_flowrate, cooling):
 
     # Run the experiment and let hit steady state
     if cooling:
-        panel_experiment.cool_and_flow_iter()
-        return panel_experiment.T_panel_matrix  # Return panel temperature profile
+        panel_experiment.cool_and_flow_iter(1000)
     else:  # No cooling
         panel_experiment.no_flow_steady_state()
         return panel_experiment.no_flow_panel_temp  # Return panel temperature profile
+
+    # Return the temperature profile
+    return panel_experiment.T_panel_matrix
 
 
 def find_optimal_flowrate(Tamb, I, Tcoolant_in):
     """Runs cooling simulation at multiple flow rates and finds the optimal one."""
     best_flowrate = 0
-    prev_efficiency_gain = 0
+    best_efficiency_gain = 0
     efficiency_threshold = 0.05  # Require at least 5% efficiency gain
 
     for mass_flowrate in mass_flowrate_range:
-        # print(f"Testing mass_flowrate: {mass_flowrate} kg/s")
+        print(f"Testing mass flowrate: {mass_flowrate} kg/s")
 
         # simulate no cooling and cooling
         T_panel_no_cooling = run_experiment(
@@ -80,28 +78,33 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
         )
 
         # for ease, use min temperature of panel
-        efficiency_gain = assess_efficiency_increase(
+        net_efficiency_gain = assess_efficiency_increase(
             T_panel_no_cooling, np.average(T_panel_with_cooling)
         )  # Compute efficiency improvement
 
-        # print(f"Efficiency gain: {efficiency_gain}")
+        print(f"Efficiency gain: {net_efficiency_gain}")
 
-        # If efficiency decreases, fluid is warming panel, return zero flow
-        if efficiency_gain < 0:
-            best_flowrate = 0
-            break
-        # If efficiency gain is less than previous, return previous best flowrate
-        elif efficiency_gain < prev_efficiency_gain:
-            break
-        # if efficiency increase sufficient, return flowrate
-        elif efficiency_gain >= efficiency_threshold:
+        # Select flowrate that maximizes net efficiency gain
+        if net_efficiency_gain > best_efficiency_gain:
+            best_efficiency_gain = net_efficiency_gain
             best_flowrate = mass_flowrate
-            break
 
-        best_flowrate = mass_flowrate
-        prev_efficiency_gain = efficiency_gain
+        # # If efficiency decreases, fluid is warming panel, return zero flow
+        # if efficiency_gain < 0:
+        #     best_flowrate = 0
+        #     break
+        # # If efficiency gain is less than previous, return previous best flowrate
+        # elif efficiency_gain < prev_efficiency_gain:
+        #     break
+        # # if efficiency increase sufficient, return flowrate
+        # elif efficiency_gain >= efficiency_threshold:
+        #     best_flowrate = mass_flowrate
+        #     break
 
-    return Tamb, I, Tcoolant_in, best_flowrate
+        # best_flowrate = mass_flowrate
+        # prev_efficiency_gain = efficiency_gain
+
+    return best_flowrate
 
 
 # Generate dataset
@@ -111,10 +114,13 @@ num_samples = len(df)  # Use all available environmental data
 data = []
 
 # Limit to the first few rows for testing
-num_samples_to_test = num_samples
+num_samples_to_test = 2
 
+for index, row in df.iterrows():
+    # for debugging with first few rows
+    if index >= num_samples_to_test:
+        break
 
-def process_sample(index, row):
     Tamb = row["air_temperature"]
     I = row["ghi"]
     Tcoolant_in = np.random.normal(
@@ -122,42 +128,18 @@ def process_sample(index, row):
     )  # Randomly sample coolant inlet temp from normal distribution
 
     # Log progress
-    print(
-        f"------- Processing sample {index + 1}/{num_samples_to_test} -------\nTamb: {Tamb}°C, I: {I} W/m^2, Tcoolant_in: {Tcoolant_in}°C"
-    )
-    start_time = time.time()
+    print(f"------- Processing sample {index + 1}/{num_samples_to_test} -------")
 
-    result = find_optimal_flowrate(Tamb, I, Tcoolant_in)
+    mass_flowrate_optimal = find_optimal_flowrate(Tamb, I, Tcoolant_in)
 
-    # Indicate sample processing completion
-    end_time = time.time()
-    print(
-        f"*  *  *  Finished processing sample {index + 1}/{num_samples_to_test} in {end_time - start_time:.2f} seconds *  *  *"
-    )
+    data.append([Tamb, I, Tcoolant_in, mass_flowrate_optimal])
 
-    return result
+# Convert to DataFrame and save to CSV
+final_df = pd.DataFrame(
+    data, columns=["Tamb", "I", "Tcoolant_in", "mass_flowrate_optimal"]
+)
+final_df.to_csv("solar_cooling_training_data_test.csv", index=False)
 
-
-if __name__ == "__main__":
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        results = pool.starmap(
-            process_sample,
-            [
-                (index, row)
-                for index, row in df.iterrows()
-                if index < num_samples_to_test
-            ],
-        )
-
-    # Collect results
-    data.extend(results)
-
-    # Convert to DataFrame and save to CSV
-    final_df = pd.DataFrame(
-        data, columns=["Tamb", "I", "Tcoolant_in", "mass_flowrate_optimal"]
-    )
-    final_df.to_csv("solar_cooling_training_data_test.csv", index=False)
-
-    print(
-        "------- Test dataset generation complete. Saved as solar_cooling_training_data_test.csv -------"
-    )
+print(
+    "------- Test dataset generation complete. Saved as solar_cooling_training_data_test.csv -------"
+)
