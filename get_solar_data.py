@@ -2,22 +2,25 @@ from io import StringIO
 import requests
 import pandas as pd
 
-# Your NREL API Key
-API_KEY = "dpBD04Vn13sHyLsZXwDIWS2Nuhu1oTewSTHiv6s5"
+# Import sensitive configuration from config.py
+try:
+    from config import API_KEY, EMAIL
+except ImportError:
+    print("Warning: config.py not found. Please create it with your API_KEY and EMAIL.")
+    print("Example config.py content:")
+    print("API_KEY = 'your_nrel_api_key'")
+    print("EMAIL = 'your_email@example.com'")
+    exit(1)
 
-# Your Email (Required for Large Requests)
-EMAIL = "diegobus@stanford.edu"
-
-# Direct CSV Download (Single Point Only)
+# Direct CSV Download
 WKT_POINT = "POINT(-115.3939 33.8214)"  # Desert Sunlight Solar Farm Center
 URL_CSV = "https://developer.nrel.gov/api/nsrdb/v2/solar/nsrdb-GOES-aggregated-v4-0-0-download.csv"
 
-# Request parameters
+# Request parameters (base parameters without year)
 PARAMS = {
     "api_key": API_KEY,
     "wkt": WKT_POINT,
     "attributes": "air_temperature,ghi,clearsky_ghi",
-    "names": "2023",
     "utc": "true",
     "leap_day": "false",
     "interval": "60",  # Hourly data
@@ -25,37 +28,34 @@ PARAMS = {
 }
 
 
-def fetch_and_filter_csv():
-    """Fetches CSV data, filters for summer clear days, and saves the result."""
-    response = requests.get(URL_CSV, params=PARAMS)
+def fetch_and_filter_csv(year):
+    """Fetches CSV data, filters for summer clear days, and saves the result for a specific year."""
+    # add the year to the parameters
+    params = PARAMS.copy()
+    params["names"] = str(year)
+    
+    response = requests.get(URL_CSV, params=params)
 
     if response.status_code == 200:
-        # Load CSV content into a Pandas dataframe
+        # load CSV content into a Pandas dataframe
         csv_data = StringIO(response.text)
         df = pd.read_csv(csv_data, skiprows=2)  # Skip metadata rows
 
-        # Print actual column names retrieved
-        print("Column Names in Retrieved CSV:", df.columns.tolist())
+        # print actual column names retrieved
+        print(f"Column Names in Retrieved CSV for {year}:", df.columns.tolist())
 
-        # Standardize column names (strip spaces, convert to lowercase)
+        # standardize column names (strip spaces, convert to lowercase)
         df.columns = df.columns.str.strip().str.lower()
 
-        # Column name mapping (API returned different names)
+        # column name mapping (API returned different names)
         column_mapping = {
             "temperature": "air_temperature",
             "ghi": "ghi",
             "clearsky ghi": "clearsky_ghi",
         }
 
-        # Rename columns based on mapping
+        # rename columns based on mapping
         df = df.rename(columns=column_mapping)
-
-        # Check if required columns exist
-        required_columns = ["air_temperature", "ghi", "clearsky_ghi"]
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            print(f"Error: Missing columns in dataset - {missing_columns}")
-            return
 
         # Convert time components to datetime format
         df["time"] = pd.to_datetime(df[["year", "month", "day", "hour"]])
@@ -72,13 +72,33 @@ def fetch_and_filter_csv():
         # Select relevant columns
         df = df[["time", "air_temperature", "ghi"]]
 
-        # Save filtered dataset to CSV
-        df.to_csv("mojave_summer_clear_days.csv", index=False)
-        print("Filtered data saved to mojave_summer_clear_days.csv")
-    else:
-        print(f"Failed to download CSV: {response.status_code}")
-        print(f"Response: {response.text}")
+        # Save filtered dataset to CSV for this year
+        output_file = f"mojave_summer_clear_days_{year}.csv"
+        df.to_csv(output_file, index=False)
+        print(f"Filtered data for {year} saved to {output_file} with {len(df)} rows")
+        
+        return df
 
 
-# Run the function
-fetch_and_filter_csv()
+def merge_csv_files(years=[2020, 2021, 2022, 2023]):
+    """Merge the CSV files from different years into a single file."""
+
+    # fetch and filter data for each year
+    dataframes = []
+    for year in years:
+        df = fetch_and_filter_csv(year)
+        if df is not None:
+            dataframes.append(df)
+            print(f"Added data for {year} with {len(df)} rows")
+    
+    # combine the dataframes
+    combined_df = pd.concat(dataframes, ignore_index=True)
+    print(f"Combined data from {len(dataframes)} years: {len(combined_df)} rows")
+    
+    # save the combined dataset
+    combined_df.to_csv("mojave_summer_clear_days.csv", index=False)
+    print(f"Combined data saved to mojave_summer_clear_days.csv with {len(combined_df)} rows")
+
+
+# run the function to merge data from specified years
+merge_csv_files()

@@ -4,12 +4,15 @@ from channel_methods import channel
 from sympy import *
 import time
 
-T = symbols("T")
-from sympy import roots, solve_poly_system
+# T = symbols("T")
+# from sympy import roots, solve_poly_system
 import multiprocessing
+from scipy.optimize import minimize_scalar
+
+
 
 # Load Mojave dataset
-df = pd.read_csv("mojave_summer_clear_days.csv")
+df = pd.read_csv("solar_data/mojave_summer_clear_days.csv")
 
 # Define constants & parameter ranges
 Tcoolant_dist = (25, 2.5)  # Coolant inlet temperature (°C), normal distribution
@@ -34,8 +37,8 @@ def assess_efficiency_increase(T_panel_no_cooling, T_panel_with_cooling, mass_fl
     efficiency_gain = eta_with_cooling - eta_no_cooling
     
     # Pump cost penalty (λ is tunable)
-    lambda_penalty = 0.015  # Adjust this value based on testing
-    pump_cost = lambda_penalty * (mass_flowrate **1.5)
+    lambda_penalty = 0.008  # Adjust this value based on testing
+    pump_cost = lambda_penalty * (mass_flowrate ** 1.5)
     
     # Adjusted efficiency gain
     net_efficiency_gain = efficiency_gain - pump_cost
@@ -101,7 +104,9 @@ def find_optimal_flowrate(Tamb, I, Tcoolant_in):
             best_flowrate = mass_flowrate
 
     # print(f"Optimal flowrate found: {best_flowrate:.6f} kg/s with net efficiency gain {best_efficiency_gain:.4f}")
-    return Tamb, I, Tcoolant_in, best_flowrate, best_efficiency_gain
+    if best_efficiency_gain < 0:
+        best_flowrate = None
+    return Tamb, I, Tcoolant_in, best_flowrate, best_efficiency_gain, T_panel_no_cooling, np.average(T_panel_with_cooling)
 
 
 # Generate dataset
@@ -154,7 +159,7 @@ if __name__ == "__main__":
 
     # Convert to DataFrame and save to CSV
     final_df = pd.DataFrame(
-        data, columns=["Tamb", "I", "Tcoolant_in", "mass_flowrate_optimal", "efficiency_gain_optimal"]
+        data, columns=["Tamb", "I", "Tcool_in", "mass_flowrate", "eff_gain", "Tp_no_cool", "Tp_cool"]
     )
     final_df.to_csv("solar_cooling_training_data_test.csv", index=False)
 

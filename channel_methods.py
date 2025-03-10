@@ -1,9 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sympy import *
-
 T = symbols("T")
-from sympy import roots, solve_poly_system
 
 
 class channel:
@@ -54,9 +52,7 @@ class channel:
         self.h = h_amb  # Convective heat transfer coefficient (W/m^2·K)
         self.mass_flow_rate = mass_flow_rate  # Mass flow rate (kg/s)
         self.T_ambient = T_ambient  # Ambient temperature (K)
-        self.T_outside = (
-            T_outside  # Temp on non-sun facing side of panel for SS no cooling
-        )
+        self.T_outside = T_ambient  # Temp on non-sun facing side of panel for SS no cooling
 
         # Panel Properties
         self.p_specific_heat = 700  # Specific heat capacity (J/kg·K)
