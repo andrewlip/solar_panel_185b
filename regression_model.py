@@ -8,11 +8,11 @@ from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 
 # Load the dataset
-data = pd.read_csv('cooling_data_complete.csv')
+data = pd.read_csv('large_cooling_data_complete.csv')
 
 # Define features and target
-X = data[['Tamb', 'I', 'Tcoolant_in']]
-y = data['mass_flowrate_optimal']
+X = data[['Tamb', 'I', 'Tcool_in']]
+y = data['mass_flowrate']
 
 # Split data into training and test sets (80/20 split)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -22,15 +22,15 @@ scaler_X = StandardScaler()
 X_train_scaled = scaler_X.fit_transform(X_train)
 X_test_scaled = scaler_X.transform(X_test)
 
-# Option 1: Scale the target variable (if values vary widely)
+#Scale the target variable
 scaler_y = StandardScaler()
 y_train_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1)).flatten()
 y_test_scaled = scaler_y.transform(y_test.values.reshape(-1, 1)).flatten()
 
 # Define the neural network model with an explicit Input layer.
 inputs = keras.Input(shape=(X_train_scaled.shape[1],))
-# Hidden layer with 9 neurons and L2 regularization
-x = keras.layers.Dense(9, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01))(inputs)
+# Hidden layer with 3 neurons and L2 regularization
+x = keras.layers.Dense(3, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01))(inputs)
 x = keras.layers.Dropout(0.1)(x)
 # Use a linear activation for the output layer.
 outputs = keras.layers.Dense(1, activation='linear')(x)

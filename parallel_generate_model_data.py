@@ -3,11 +3,8 @@ import numpy as np
 from channel_methods import channel
 from sympy import *
 import time
-
-# T = symbols("T")
-# from sympy import roots, solve_poly_system
 import multiprocessing
-from scipy.optimize import minimize_scalar
+
 
 
 
