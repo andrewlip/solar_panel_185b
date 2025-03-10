@@ -34,7 +34,7 @@ def assess_efficiency_increase(T_panel_no_cooling, T_panel_with_cooling, mass_fl
     efficiency_gain = eta_with_cooling - eta_no_cooling
     
     # Pump cost penalty (λ is tunable)
-    lambda_penalty = 0.008  # Adjust this value based on testing
+    lambda_penalty = 0.012  # Adjust this value based on testing
     pump_cost = lambda_penalty * (mass_flowrate ** 1.5)
     
     # Adjusted efficiency gain
